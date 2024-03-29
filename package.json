@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@cashfreepayments/cashfree-sdk": "^0.1.7",
+    "axios": "^1.6.8"
+  }
+}

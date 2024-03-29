@@ -1,35 +1,49 @@
 require("dotenv").config();
-const express = require("express");
-const app = express();
+const axios = require("axios");
 
-//require CashfreeSDK
-const cfSdk = require("cashfree-sdk");
+//Get Authorization Token
 
-//access the PayoutsSdk from CashfreeSDK
-const { Payouts } = cfSdk;
-
-// Instantiate Cashfree Payouts
-const payoutsInstance = new Payouts({
-  env: "TEST",
-  clientId: process.env.CF_ID,
-  clientSecret: process.env.CF_SECRET,
-});
-
-const transfer_id = 1;
-
-//TODO get last transfer_id() form DB
-
-//Get Beneficiary Details
-const GetBeneficiary = async (id) => {
+const GetToken = async () => {
   try {
-    const response = await payoutsInstance.beneficiary.getById({
-      beneId: id,
+    const response = await axios({
+      method: "post",
+      url: "https://payout-api.cashfree.com/payout/v1/authorize",
+      data: {},
+      headers: {
+        "X-Client-Id": process.env.CF_ID,
+        "X-Client-Secret": process.env.CF_SECRET,
+      },
     });
 
-    if (response.status == "SUCCESS") {
-      console.log("Beneficiary Recieved", response);
-      return response;
-    } else throw new Error("Invalid beneficiary Id", response);
+    if (response.data.status == "SUCCESS") return response.data.data.token;
+    else {
+      console.log("Token Acquisition Failed");
+      return response.data;
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+//Get Beneficiary Details By Beneficiary Id
+const GetBeneficiary = async (beneid) => {
+  try {
+    const url =
+      "https://payout-api.cashfree.com/payout/v1/getBeneficiary/" + beneid;
+    const token = await GetToken();
+    const response = await axios({
+      method: "get",
+      url: url,
+      data: {},
+      headers: {
+        Authorization: "Bearer " + token,
+      },
+    });
+    if (response.data.status == "SUCCESS") return response.data;
+    else {
+      console.log("Fetching Beneficiary Data failed");
+      return response.data;
+    }
   } catch (error) {
     console.log(error.message);
   }
@@ -38,121 +52,156 @@ const GetBeneficiary = async (id) => {
 //Add Beneficiary
 const AddBeneficiary = async (data) => {
   try {
-    const response = await payoutsInstance.beneficiary.add(data);
+    const token = await GetToken();
+    const response = await axios({
+      method: "post",
+      url: "https://payout-api.cashfree.com/payout/v1/addBeneficiary",
+      data: data,
+      headers: {
+        Authorization: "Bearer " + token,
+      },
+    });
 
-    if (response.status == "SUCCESS") {
-      console.log(response);
-      return response;
-    } else throw new Error("Beneficiary Addition failed", response);
+    if (response.data.status == "SUCCESS") return response.data;
+    else {
+      console.log("Adding New Beneficiary failed");
+      return response.data;
+    }
   } catch (error) {
     console.log(error.message);
   }
 };
 
-//Payout Transfer
+//Standard Transfer
 
-const PayoutTransfer = async (beneid, amount) => {
+const StandardTransfer = async (data) => {
   try {
-    const response = await payoutsInstance.transfers.requestTransfer({
-      beneId: beneid,
-      transferId: transfer_id,
-      amount: amount,
+    const token = await GetToken();
+    const response = await axios({
+      method: "post",
+      url: "https://payout-api.cashfree.com/payout/v1/requestTransfer",
+      data: data,
+      headers: {
+        Authorization: "Bearer " + token,
+      },
     });
 
-    if (response.status == "SUCCESS") {
-      console.log(response);
-      //TODO update latest tranfer id in DB
-      return response;
-    } else throw new Error("Transfer Failed", response);
+    if (response.status == 200) return response.data;
+    else {
+      console.log("Transfer Request Failed");
+      return response.data;
+    }
   } catch (error) {
     console.log(error.message);
   }
 };
 
-// APi to fetch tranfer details using transfer id
-const StatusbyTransferId = async (transferid) => {
+//Fetching Transfer Status using reference Id
+const StandardTransferStatusByRefId = async (refid) => {
   try {
-    const response = await payoutsInstance.transfers.getTransferStatus({
-      transferId: transferid,
+    const token = await GetToken();
+    const response = await axios({
+      method: "get",
+      url: "https://payout-api.cashfree.com/payout/v1.1/getTransferStatus",
+      params: {
+        referenceId: refid,
+      },
+      headers: {
+        Authorization: "Bearer " + token,
+      },
     });
 
-    if (response) {
-      console.log(response);
-      return response;
-    } else throw new Error("Failed to fetch transfer status", response);
+    if (response.data.status == "SUCCESS") return response.data;
+    else {
+      console.log("Trasfer Status Fetch Request Failed");
+      return response.data;
+    }
   } catch (error) {
     console.log(error.message);
   }
 };
 
-// APi to fetch tranfer details using reference id
-const StatusbyReferenceId = async (refid) => {
+//fetching Transfer Status using Transfer Id
+const StandardTransferStatusByTransferId = async (transferid) => {
   try {
-    const response = await payoutsInstance.transfers.getTransferStatus({
-      referenceId: refid,
+    const token = await GetToken();
+    const response = await axios({
+      method: "get",
+      url: "https://payout-api.cashfree.com/payout/v1.1/getTransferStatus",
+      params: {
+        transferId: transferid,
+      },
+      headers: {
+        Authorization: "Bearer " + token,
+      },
     });
 
-    if (response) {
-      console.log(response);
-      return response;
-    } else throw new Error("Failed to fetch transfer status", response);
+    if (response.data.status == "SUCCESS") return response.data;
+    else {
+      console.log("Trasfer Status Fetch Request Failed");
+      return response.data;
+    }
   } catch (error) {
     console.log(error.message);
   }
 };
 
-const batchTransferId = 1;
-//TODO get latest batch id from DB
-
-//API for Batch Transfer
-const BatchTransfer = async (batches) => {
-  //Adding tranfer id to each batch
-  batches = batches.map((batch) => {
-    return { ...batch, transfer_id };
-    // TODO increment transfer_id in DB
-  });
-
+//Batch Tranfer API
+const BatchTransfer = async (data) => {
   try {
-    const response = await payoutsInstance.transfers.requestBatchTransfer({
-      batchTransferId: batchTransferId,
-      batchFormat: "BANK_ACCOUNT",
-      batch: batches,
+    const token = await GetToken();
+    const response = await axios({
+      method: "post",
+      url: "https://payout-api.cashfree.com/payout/v1/requestBatchTransfer",
+
+      data: data,
+      headers: {
+        Authorization: "Bearer " + token,
+      },
     });
 
-    if (response.status == "SUCCESS") {
-      console.log("Batch Req Accepted", response);
-      //TODO
-      // increment batchtransferid in DB
-      return response;
-    } else throw new Error("Batch Req failed", response);
+    if (response.data.status == "SUCCESS") return response.data;
+    else {
+      console.log("Batch Trasfer Request Failed");
+      return response.data;
+    }
   } catch (error) {
     console.log(error.message);
   }
 };
 
-//Get Batch Transfer Status
-
-const getBatchTransferStatus = async (batchTransferId) => {
+//get Batch Transfer Status usin batch transfer id
+const BatchTransferStatus = async (batchTransferId) => {
   try {
-    const response = await payoutsInstance.tranfers.getBatchTransferStatus({
-      batchTransferId: batchTransferId,
+    const token = await GetToken();
+    const response = await axios({
+      method: "get",
+      url: "https://payout-api.cashfree.com/payout/v1/getBatchTransferStatus",
+      params: {
+        batchTransferId: batchTransferId,
+      },
+      headers: {
+        Authorization: "Bearer " + token,
+      },
     });
 
-    if (response) {
-      console.log("Status Fetch Success", response);
-      return response;
-    } else throw new Error("Status Fetch failed");
+    if (response.data.status == "SUCCESS") return response.data;
+    else {
+      console.log("Batch Trasfer Status Fetch Failed");
+      return response.data;
+    }
   } catch (error) {
     console.log(error.message);
   }
 };
 
 module.exports = {
+  GetToken,
   GetBeneficiary,
   AddBeneficiary,
-  PayoutTransfer,
-  StatusbyReferenceId,
-  StatusbyTransferId,
+  StandardTransfer,
+  StandardTransferStatusByTransferId,
+  StandardTransferStatusByRefId,
   BatchTransfer,
-  getBatchTransferStatus,
+  BatchTransferStatus,
 };
